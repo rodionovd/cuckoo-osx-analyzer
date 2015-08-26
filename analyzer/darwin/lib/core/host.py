@@ -10,9 +10,13 @@ from os import path
 from bson import BSON
 from datetime import datetime
 from subprocess import check_output, CalledProcessError
+
 from filetimes import dt_to_filetime
 
 log = logging.getLogger(__name__)
+
+def signatures_path():
+    return path.join(path.dirname(path.abspath(__file__)), "data", "signatures.yml")
 
 class CuckooHost(object):
     """ Sending analysis results back to the Cuckoo Host.
@@ -39,7 +43,7 @@ class CuckooHost(object):
     }
 
     def __init__(self, host_ip, host_port):
-        self.ip = host_ip
+        self.address = host_ip
         self.port = host_port
         self._load_human_readable_info()
 
@@ -89,7 +93,7 @@ class CuckooHost(object):
     def _create_socket(self):
         """ Allocates a new socket and prepares it for communicating with the host """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((self.ip, self.port))
+        sock.connect((self.address, self.port))
         # Prepare the result server to accept data in BSON format
         sock.sendall("BSON\n")
         return sock
@@ -201,14 +205,14 @@ class CuckooHost(object):
         return description
 
     def _load_human_readable_info(self):
-        signatures = _description_file_path()
+        signatures = signatures_path()
         try:
             with open(signatures, "r") as infile:
                 self.human_readable_info = yaml.safe_load(infile)
         except IOError:
-            log.exception("Could not open %s" % path.basename(signatures))
+            log.exception("Could not open %s", path.basename(signatures))
         except ValueError:
-            log.exception("Invalid YAML file %s" % path.basename(signatures))
+            log.exception("Invalid YAML file %s", path.basename(signatures))
 
 
 def _proc_name_from_pid(pid):
@@ -228,7 +232,3 @@ def _filetime_from_timestamp(timestamp):
     moment = datetime.fromtimestamp(timestamp)
     delta_from_utc = moment - datetime.utcfromtimestamp(timestamp)
     return dt_to_filetime(moment, delta_from_utc)
-
-
-def _description_file_path():
-    return path.join(path.dirname(path.abspath(__file__)), "data", "signatures.yml")

@@ -4,7 +4,6 @@
 # of the MIT license. See the LICENSE file for details.
 
 import yaml
-import json
 from os import path
 from string import Template
 from sets import Set
@@ -17,9 +16,12 @@ def generate_probes(definitions, output_path, overwrite=True):
         defs = definitions
     else:
         defs = read_definitions(definitions)
+
     types = read_types(path.abspath(path.join(__file__, "../../core/data/types.yml")))
-    contents  = [HEADER] + typedefs_for_custom_structs(defs, types)
+    # Generate the .d script contents: with headers, type definitions and probes
+    contents = [HEADER] + typedefs_for_custom_structs(defs, types)
     contents += [probe_from_definition(x, types) for x in defs]
+    # and write it to an output file
     dump_probes(contents, output_path)
 
 # FILE IO
@@ -30,7 +32,6 @@ def read_definitions(fromfile):
         contents = yaml.safe_load(stream)
         # Now convert the root dictionary to an array of dictionaries where
         # original keys become values for the "api" key.
-        # FIXME(rodionovd): yes, I know, it should be an array..
         return [dict({'api': k}, **v) for k, v in contents.iteritems()]
 
 def read_types(infile):
@@ -89,8 +90,6 @@ def return_probe_from_definition(df, types):
 def typedefs_for_custom_structs(defs, types):
     """ Returns a list of typedef statements for custom structures
     defined in `types.yml`."""
-    def flatten(list_of_lists):
-        return sum(list_of_lists, [])
     def deep_search_types(parent, types):
         result = Set()
         for t in parent:
@@ -109,7 +108,7 @@ def typedefs_for_custom_structs(defs, types):
     typedefs = []
     for (name, description) in struct_types.iteritems():
         fields = []
-        for (f,t) in description["struct"].iteritems():
+        for (f, t) in description["struct"].iteritems():
             fields.append("%s %s;" % (t, f))
         template = "typedef struct {\n\t%s\n} %s;\n\n"
         typedefs.append(template % ("\n\t".join(fields), name))
@@ -125,7 +124,7 @@ def arguments_section(args, types):
     def serialize_arg(idx):
         return serialize_argument_at_idx(idx, args, "self->arg%d" % idx, types)
     parts = [serialize_arg(i) for i in xrange(len(args))]
-    return ("\n\t\t" + ", ".join(parts) + ",")
+    return "\n\t\t" + ", ".join(parts) + ","
 
 def arguments_format_string(args, types):
     """ Returns a format string for printing the given arguments
@@ -247,9 +246,8 @@ def push_on_stack_section(args):
         return ""
     parts = ["self->deeplevel++;"]
     for idx in xrange(len(args)):
-        parts.append(
-            """self->arguments_stack[self->deeplevel, \"arg%d\"] = self->arg%d;\n\tself->arg%d = arg%d;""" % (idx, idx, idx, idx)
-        )
+        parts.append('self->arguments_stack[self->deeplevel, "arg%d"] = self->arg%d;' % (idx, idx))
+        parts.append("self->arg%d = arg%d;" % (idx, idx))
     return "\n\t".join(parts)
 
 
@@ -265,6 +263,9 @@ def pop_from_stack_section(args):
     parts.append("--self->deeplevel;")
     return "\n\t" + "\n\t".join(parts)
 
+
+def flatten(list_of_lists):
+    return sum(list_of_lists, [])
 
 ENTRY_PROBE_TEMPLATE = """pid$$target:${__LIBRARY__}:${__NAME__}:entry
 {
